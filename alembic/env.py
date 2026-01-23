@@ -6,7 +6,9 @@ from sqlalchemy import pool
 from alembic import context
 
 import os
-from models.exercise import Base
+from models.base import Base
+import models.exercise
+import models.user
 from dotenv import load_dotenv
 load_dotenv()
 
