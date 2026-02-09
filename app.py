@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 from routes.auth import auth_bp
 from routes.users import user_bp
+from routes.exercises import exercise_bp
 
 def creat_app() -> Flask:
     app = Flask(__name__)
@@ -15,6 +16,7 @@ def creat_app() -> Flask:
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(user_bp)
+    app.register_blueprint(exercise_bp)
     
     return app
 

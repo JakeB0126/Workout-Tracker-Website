@@ -7,8 +7,8 @@ from alembic import context
 
 import os
 from models.base import Base
-import models.exercise
-import models.user
+import models.exercise, models.user, models.workout
+import models.workout_exercise, models.workout_set
 from dotenv import load_dotenv
 load_dotenv()
 
