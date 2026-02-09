@@ -1,9 +1,6 @@
 from flask import Blueprint, jsonify
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
-import os
 
+from db import get_session
 from models.exercise import Exercise
 
 exercise_bp = Blueprint("exercises", __name__, url_prefix="/exercises")
@@ -11,11 +8,7 @@ exercise_bp = Blueprint("exercises", __name__, url_prefix="/exercises")
 
 @exercise_bp.route("/", methods=["GET"])
 def get_exercises():
-    load_dotenv()
-    engine = create_engine(os.environ["DATABASE_URL"])
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    try:
+    with get_session() as session:
         exercises = session.query(Exercise).all()
         data = [
             {
@@ -26,6 +19,4 @@ def get_exercises():
             }
             for ex in exercises
         ]
-        return jsonify(data), 200
-    finally:
-        session.close()
+    return jsonify(data), 200

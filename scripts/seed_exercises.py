@@ -1,9 +1,4 @@
-import os
-
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
+from db import get_session
 from models.exercise import Exercise
 
 EXERCISES = [
@@ -31,36 +26,26 @@ EXERCISES = [
 
 
 def seed_data() -> None:
-    load_dotenv()
-    database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL is not set. Add it to .env before seeding.")
+    with get_session() as session:
+        try:
+            existing_names = {name for (name,) in session.query(Exercise.name).all()}
 
-    engine = create_engine(database_url)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+            new_exercises = [
+                Exercise(**exercise)
+                for exercise in EXERCISES
+                if exercise["name"] not in existing_names
+            ]
 
-    try:
-        existing_names = {name for (name,) in session.query(Exercise.name).all()}
+            if not new_exercises:
+                print("No new exercises to insert. Seed is already up to date.")
+                return
 
-        new_exercises = [
-            Exercise(**exercise)
-            for exercise in EXERCISES
-            if exercise["name"] not in existing_names
-        ]
-
-        if not new_exercises:
-            print("No new exercises to insert. Seed is already up to date.")
-            return
-
-        session.add_all(new_exercises)
-        session.commit()
-        print(f"Inserted {len(new_exercises)} exercises.")
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
+            session.add_all(new_exercises)
+            session.commit()
+            print(f"Inserted {len(new_exercises)} exercises.")
+        except Exception:
+            session.rollback()
+            raise
 
 
 if __name__ == "__main__":
