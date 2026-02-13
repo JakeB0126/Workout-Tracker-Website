@@ -1,8 +1,12 @@
-import os 
-from app import creat_app
+from pathlib import Path
+import sys
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from app import create_app
 
 def test_main_workout_flow():
-    app = creat_app()
+    app = create_app()
     client = app.test_client()
     
     # Login
