@@ -29,6 +29,12 @@ def _get_user_from_identity(session, identity):
         return session.query(User).filter(User.email == identity).first()
     return None
 
+
+def _optional_decimal_to_float(value: Optional[Decimal]) -> Optional[float]:
+    if value is None:
+        return None
+    return float(value)
+
 # ADD a workout
 @workout_bp.route("/", methods=["POST"])
 @jwt_required()
@@ -250,18 +256,110 @@ def post_workout_set(workout_exercise_id):
         session.commit()
         session.refresh(workout_set)
 
-    weight_lbs_value = cast(Optional[Decimal], workout_set.weight_lbs)
-
     return jsonify(
         {
             "id": workout_set.id,
             "workout_exercise_id": workout_set.workout_exercise_id,
             "set_number": workout_set.set_number,
             "reps": workout_set.reps,
-            "weight_lbs": float(weight_lbs_value) if weight_lbs_value is not None else None,
+            "weight_lbs": _optional_decimal_to_float(cast(Optional[Decimal], workout_set.weight_lbs)),
             "set_type": workout_set.set_type,
         }
     ), 201
+    
+# GET nested workout
+@workout_bp.route("/<int:workout_id>", methods=["GET"])
+@jwt_required()
+def get_workout(workout_id):
+    identity = get_jwt_identity()
+
+    with get_session() as session:
+        user = _get_user_from_identity(session, identity)
+        if user is None:
+            return jsonify(
+                {"msg": "Authenticated user was not found. Login identity must map to a real user."}
+            ), 401
+        owned_workout = (
+            session.query(Workout)
+            .filter(
+                Workout.id == workout_id,
+                Workout.user_id == user.id,
+            )
+            .first()
+        )
+        if owned_workout is None:
+            return jsonify({"msg": "Workout not found or access denied"}), 404
+
+        workout_exercises = (
+            session.query(WorkoutExercise)
+            .filter(WorkoutExercise.workout_id == workout_id)
+            .order_by(WorkoutExercise.order_index.asc())
+            .all()
+        )
+
+        exercise_ids = [we.exercise_id for we in workout_exercises]
+        exercises = (
+            session.query(Exercise).filter(Exercise.id.in_(exercise_ids)).all()
+            if exercise_ids
+            else []
+        )
+        exercise_map = {exercise.id: exercise for exercise in exercises}
+
+        workout_exercise_ids = [we.id for we in workout_exercises]
+        workout_sets = (
+            session.query(WorkoutSet)
+            .filter(WorkoutSet.workout_exercise_id.in_(workout_exercise_ids))
+            .order_by(WorkoutSet.set_number.asc())
+            .all()
+            if workout_exercise_ids
+            else []
+        )
+
+        sets_by_workout_exercise_id = {}
+        for workout_set in workout_sets:
+            sets_by_workout_exercise_id.setdefault(workout_set.workout_exercise_id, []).append(workout_set)
+
+        nested_exercises = []
+        for workout_exercise in workout_exercises:
+            exercise = exercise_map.get(workout_exercise.exercise_id)
+            sets_for_exercise = sets_by_workout_exercise_id.get(workout_exercise.id, [])
+
+            nested_exercises.append(
+                {
+                    "workout_exercise_id": workout_exercise.id,
+                    "order_index": workout_exercise.order_index,
+                    "exercise": {
+                        "id": workout_exercise.exercise_id,
+                        "name": exercise.name if exercise is not None else None,
+                        "muscle_group": exercise.muscle_group if exercise is not None else None,
+                        "equipment_type": exercise.equipment_type if exercise is not None else None,
+                    },
+                    "sets": [
+                        {
+                            "id": workout_set.id,
+                            "set_number": workout_set.set_number,
+                            "reps": workout_set.reps,
+                            "weight_lbs": _optional_decimal_to_float(
+                                cast(Optional[Decimal], workout_set.weight_lbs)
+                            ),
+                            "set_type": workout_set.set_type,
+                        }
+                        for workout_set in sets_for_exercise
+                    ],
+                }
+            )
+
+        return jsonify(
+            {
+                "id": owned_workout.id,
+                "user_id": owned_workout.user_id,
+                "name": owned_workout.name,
+                "started_at": owned_workout.started_at.isoformat(),
+                "ended_at": owned_workout.ended_at.isoformat() if owned_workout.ended_at is not None else None,
+                "exercises": nested_exercises,
+            }
+        ), 200
+
 
 # DELETE exercise from a workout
 @workout_bp.route("/<int:workout_id>/exercises/<int:workout_exercise_id>", methods=["DELETE"])
