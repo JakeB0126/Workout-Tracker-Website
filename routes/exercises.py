@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from db import get_session
 from models.exercise import Exercise
@@ -8,8 +8,16 @@ exercise_bp = Blueprint("exercises", __name__, url_prefix="/exercises")
 
 @exercise_bp.route("/", methods=["GET"])
 def get_exercises():
+    name = request.args.get("name", type=str)
+    
     with get_session() as session:
-        exercises = session.query(Exercise).all()
+        q = session.query(Exercise)
+        
+        if name:
+            q = q.filter(Exercise.name.ilike(f"%{name}%"))
+        
+        exercises = q.order_by(Exercise.name).all()
+        
         data = [
             {
                 "id": ex.id,

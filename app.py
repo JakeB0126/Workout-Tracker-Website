@@ -7,6 +7,7 @@ from flask_jwt_extended import JWTManager
 from routes.auth import auth_bp
 from routes.exercises import exercise_bp
 from routes.users import user_bp
+from routes.workouts import workout_bp
 
 
 def create_app() -> Flask:
@@ -22,6 +23,7 @@ def create_app() -> Flask:
     app.register_blueprint(auth_bp)
     app.register_blueprint(user_bp)
     app.register_blueprint(exercise_bp)
+    app.register_blueprint(workout_bp)
 
     return app
 
