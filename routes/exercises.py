@@ -28,3 +28,5 @@ def get_exercises():
             for ex in exercises
         ]
     return jsonify(data), 200
+
+    

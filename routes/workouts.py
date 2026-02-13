@@ -29,7 +29,7 @@ def _get_user_from_identity(session, identity):
         return session.query(User).filter(User.email == identity).first()
     return None
 
-
+# ADD a workout
 @workout_bp.route("/", methods=["POST"])
 @jwt_required()
 def create_workout():
@@ -84,7 +84,7 @@ def create_workout():
         }
     ), 201
 
-
+# ADD an exericse to a workout
 @workout_bp.route("/<int:workout_id>/exercises", methods=["POST"])
 @jwt_required()
 def post_workout_exercise(workout_id):
@@ -165,6 +165,7 @@ def post_workout_exercise(workout_id):
         }
     ), 201
 
+# ADD a set to an exercise
 @workout_bp.route("/workout-exercises/<int:workout_exercise_id>/sets", methods=["POST"])
 @jwt_required()
 def post_workout_set(workout_exercise_id):
@@ -262,7 +263,7 @@ def post_workout_set(workout_exercise_id):
         }
     ), 201
 
-
+# DELETE exercise from a workout
 @workout_bp.route("/<int:workout_id>/exercises/<int:workout_exercise_id>", methods=["DELETE"])
 @jwt_required()
 def delete_workout_exercise(workout_id, workout_exercise_id):
@@ -317,7 +318,7 @@ def delete_workout_exercise(workout_id, workout_exercise_id):
 
     return jsonify({"msg": "Workout exercise deleted"}), 200
 
-
+# DELETE set from an exercise
 @workout_bp.route("/workout-exercises/<int:workout_exercise_id>/sets/<int:set_id>", methods=["DELETE"])
 @jwt_required()
 def delete_workout_set(workout_exercise_id, set_id):
@@ -374,3 +375,91 @@ def delete_workout_set(workout_exercise_id, set_id):
         session.commit()
 
     return jsonify({"msg": "Workout set deleted"}), 200
+
+@workout_bp.route("/<int:workout_id>/exercises/reorder", methods=["PATCH"])
+@jwt_required()
+def reorder_workout_exercises(workout_id):
+    identity = get_jwt_identity()
+    body = request.get_json(silent=True) or {}
+    ordered_ids = body.get("ordered_workout_exercise_ids")
+    
+    if not isinstance(ordered_ids, list) or not ordered_ids:
+        return jsonify({"msg": "ordered_workout_exercise_ids must be a non-empty list"}), 400
+
+    if not all(isinstance(x, int) for x in ordered_ids):
+        return jsonify({"msg": "ordered_workout_exercise_ids must contain only integers"}), 400
+    
+    if len(set(ordered_ids)) != len(ordered_ids):
+        return jsonify({"msg": "ordered_workout_exercise_ids contains duplicates"}), 400
+    
+    with get_session() as session:
+        user = _get_user_from_identity(session, identity)
+        if user is None:
+            return jsonify(
+                {"msg": "Authenticated user was not found. Login identity must map to a real user."}
+            ), 401
+            
+        owned_workout = (
+                session.query(Workout)
+                .filter(
+                    Workout.id == workout_id,
+                    Workout.user_id == user.id,
+                )
+                .first()
+            )
+        if owned_workout is None:
+            return jsonify({"msg": "Workout not found or access denied"}), 404
+        
+        rows = (
+            session.query(WorkoutExercise)
+            .filter(WorkoutExercise.workout_id == workout_id)
+            .order_by(WorkoutExercise.order_index.asc())
+            .all()
+        )
+        
+        if not rows:
+            return jsonify({"msg": "No exercises found for this workout"}), 404
+        
+        existing_ids = {row.id for row in rows}
+        submitted_ids = set(ordered_ids)
+        
+        if submitted_ids != existing_ids:
+            return jsonify(
+                {"msg": "ordered_workout_exercise_ids must include every exercise in this workout exactly once"}
+            ), 400
+        
+        # Re-index to avoid unique constraint collisions.
+        for i, row_id in enumerate(ordered_ids, start=1):
+            session.query(WorkoutExercise).filter(
+                WorkoutExercise.id == row_id,
+                WorkoutExercise.workout_id == workout_id,
+            ).update(
+                {WorkoutExercise.order_index: 1000 + i},
+                synchronize_session=False,
+            )
+        
+        session.flush()
+        
+        for i, row_id in enumerate(ordered_ids, start=1):
+            session.query(WorkoutExercise).filter(
+                WorkoutExercise.id == row_id,
+                WorkoutExercise.workout_id == workout_id,
+            ).update(
+                {WorkoutExercise.order_index: i},
+                synchronize_session=False,
+            )
+            
+        session.commit()
+        
+    return jsonify(
+        {
+            "workout_id": workout_id,
+            "ordered_workout_exercise_ids": ordered_ids,
+        }
+    ), 200
+    
+
+    
+    
+        
+    
